@@ -77,13 +77,28 @@ app.post("/api/contact", contactLimiter, async (req, res) => {
     await fs.mkdir(DATA_DIR, { recursive: true });
     await fs.appendFile(path.join(DATA_DIR, "messages.jsonl"), JSON.stringify(entry) + "\n");
 
-    if (mailer) {
+    const text = `Name: ${name}\nEmail: ${email}\n\n${message}`;
+    if (process.env.RESEND_API_KEY) {
+      // HTTPS email API (works on hosts that block SMTP ports, like Render free)
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: process.env.MAIL_FROM || "CodeNest Website <onboarding@resend.dev>",
+          to: [process.env.MAIL_TO],
+          reply_to: email,
+          subject: `[Portfolio] ${subject}`,
+          text,
+        }),
+      });
+      if (!r.ok) throw new Error(`Resend ${r.status}: ${await r.text()}`);
+    } else if (mailer) {
       await mailer.sendMail({
         from: `"Portfolio Website" <${process.env.SMTP_USER}>`,
         to: process.env.MAIL_TO || process.env.SMTP_USER,
         replyTo: `"${name.replace(/"/g, "")}" <${email}>`,
         subject: `[Portfolio] ${subject}`,
-        text: `Name: ${name}\nEmail: ${email}\n\n${message}`,
+        text,
       });
     }
     res.json({ ok: true });
